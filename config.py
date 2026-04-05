@@ -5,7 +5,7 @@ import os
 
 # ── Токены (задать в .env или переменных окружения) ───────
 BOT_TOKEN   = os.getenv("BOT_TOKEN", "8658379141:AAGz6_sMipY99oCfkYaul0mOYJ7Rf4xqadA")
-ADMIN_ID    = int(os.getenv("ADMIN_ID", "0"))          # твой Telegram ID
+ADMIN_ID    = int(os.getenv("ADMIN_ID", "730539864"))          # твой Telegram ID
 ADMIN_USERNAME = "rau_ff"
 CHANNEL_USERNAME = "lamalif_official"                  # без @
 
