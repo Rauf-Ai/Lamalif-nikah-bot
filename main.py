@@ -11,7 +11,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import BOT_TOKEN
 import database as db
-from handlers import registration, browse, misc
+from handlers import registration, browse, misc, admin
 from handlers import payment, referral
 
 logging.basicConfig(
@@ -47,6 +47,7 @@ async def main():
     dp.include_router(referral.router)
     dp.include_router(browse.router)
     dp.include_router(misc.router)
+    dp.include_router(admin.router)
 
     # Фоновая задача снятия истёкшего премиума
     asyncio.create_task(premium_expiry_task())
