@@ -22,12 +22,14 @@ class AdminStates(StatesGroup):
     waiting_premium_days  = State()   # кол-во дней премиума
     waiting_broadcast_msg = State()   # текст рассылки
     waiting_message_text  = State()   # сообщение конкретному юзеру
-    user_selected         = State()   # пользователь выбран, ждём действия
+    user_selected         = State()   # пользователь выбран, ждём действие
 
 
 # ─── Проверка админа ──────────────────────────────────────
 def is_admin(user_id: int) -> bool:
-    return user_id == ADMIN_ID
+    result = user_id == ADMIN_ID
+    print(f"🔍 Проверка админа: user_id={user_id}, ADMIN_ID={ADMIN_ID}, result={result}")
+    return result
 
 
 # ─── Главная панель ───────────────────────────────────────
@@ -70,7 +72,8 @@ def premium_days_keyboard(tg_id: int) -> InlineKeyboardMarkup:
     for d in days_options:
         row.append(InlineKeyboardButton(text=f"{d} дн.", callback_data=f"adm_prem_days_{tg_id}_{d}"))
         if len(row) == 3:
-            rows.append(row); row = []
+            rows.append(row)
+            row = []
     if row:
         rows.append(row)
     rows.append([InlineKeyboardButton(text="✏️ Своё кол-во дней", callback_data=f"adm_prem_custom_{tg_id}")])
@@ -81,8 +84,14 @@ def premium_days_keyboard(tg_id: int) -> InlineKeyboardMarkup:
 # ─── /admin ───────────────────────────────────────────────
 @router.message(Command("admin"))
 async def cmd_admin(message: Message, state: FSMContext):
+    print(f"🔥 Команда /admin получена от {message.from_user.id}")
+    print(f"ADMIN_ID из config: {ADMIN_ID}")
+    
     if not is_admin(message.from_user.id):
+        print(f"❌ Доступ запрещён: {message.from_user.id} != {ADMIN_ID}")
+        await message.answer("⛔ У вас нет доступа к админ-панели.")
         return
+    
     await state.clear()
     await message.answer(
         "🛠 <b>Админ-панель ЛямАлиф Никях</b>\n\nВыберите действие:",
@@ -93,14 +102,18 @@ async def cmd_admin(message: Message, state: FSMContext):
 
 @router.callback_query(F.data == "adm_close")
 async def adm_close(call: CallbackQuery, state: FSMContext):
-    if not is_admin(call.from_user.id): return
+    if not is_admin(call.from_user.id):
+        await call.answer("⛔ Доступ запрещён", show_alert=True)
+        return
     await state.clear()
     await call.message.delete()
 
 
 @router.callback_query(F.data == "adm_back")
 async def adm_back(call: CallbackQuery, state: FSMContext):
-    if not is_admin(call.from_user.id): return
+    if not is_admin(call.from_user.id):
+        await call.answer("⛔ Доступ запрещён", show_alert=True)
+        return
     await state.clear()
     await call.message.edit_text(
         "🛠 <b>Админ-панель ЛямАлиф Никях</b>\n\nВыберите действие:",
@@ -112,7 +125,9 @@ async def adm_back(call: CallbackQuery, state: FSMContext):
 # ─── Общая статистика ─────────────────────────────────────
 @router.callback_query(F.data == "adm_stats")
 async def adm_stats(call: CallbackQuery):
-    if not is_admin(call.from_user.id): return
+    if not is_admin(call.from_user.id):
+        await call.answer("⛔ Доступ запрещён", show_alert=True)
+        return
     await call.answer()
     import aiosqlite
     from database import DB_PATH
@@ -167,7 +182,9 @@ async def adm_stats(call: CallbackQuery):
 # ─── Новые за сегодня ─────────────────────────────────────
 @router.callback_query(F.data == "adm_new_today")
 async def adm_new_today(call: CallbackQuery):
-    if not is_admin(call.from_user.id): return
+    if not is_admin(call.from_user.id):
+        await call.answer("⛔ Доступ запрещён", show_alert=True)
+        return
     await call.answer()
     import aiosqlite
     from database import DB_PATH
@@ -206,7 +223,9 @@ async def adm_new_today(call: CallbackQuery):
 # ─── Список премиум-пользователей ─────────────────────────
 @router.callback_query(F.data == "adm_list_premium")
 async def adm_list_premium(call: CallbackQuery):
-    if not is_admin(call.from_user.id): return
+    if not is_admin(call.from_user.id):
+        await call.answer("⛔ Доступ запрещён", show_alert=True)
+        return
     await call.answer()
     import aiosqlite
     from database import DB_PATH
@@ -227,7 +246,7 @@ async def adm_list_premium(call: CallbackQuery):
         lines = [f"⭐ <b>Премиум-пользователи ({len(rows)}):</b>\n"]
         for r in rows:
             uname = f"@{r['username']}" if r["username"] else f"ID:{r['tg_id']}"
-            name  = r["name"] or "—"
+            name = r["name"] or "—"
             until = r["premium_until"] or "?"
             lines.append(f"• {name} {uname} — до {until}")
         text = "\n".join(lines)
@@ -241,7 +260,9 @@ async def adm_list_premium(call: CallbackQuery):
 # ─── Список забаненных ────────────────────────────────────
 @router.callback_query(F.data == "adm_list_banned")
 async def adm_list_banned(call: CallbackQuery):
-    if not is_admin(call.from_user.id): return
+    if not is_admin(call.from_user.id):
+        await call.answer("⛔ Доступ запрещён", show_alert=True)
+        return
     await call.answer()
     import aiosqlite
     from database import DB_PATH
@@ -261,7 +282,7 @@ async def adm_list_banned(call: CallbackQuery):
         lines = [f"🚫 <b>Забаненные ({len(rows)}):</b>\n"]
         for r in rows:
             uname = f"@{r['username']}" if r["username"] else f"ID:{r['tg_id']}"
-            name  = r["name"] or "—"
+            name = r["name"] or "—"
             lines.append(f"• {name} — {uname}")
         text = "\n".join(lines)
 
@@ -274,7 +295,9 @@ async def adm_list_banned(call: CallbackQuery):
 # ─── Поиск пользователя ───────────────────────────────────
 @router.callback_query(F.data == "adm_find_user")
 async def adm_find_user_start(call: CallbackQuery, state: FSMContext):
-    if not is_admin(call.from_user.id): return
+    if not is_admin(call.from_user.id):
+        await call.answer("⛔ Доступ запрещён", show_alert=True)
+        return
     await call.answer()
     await call.message.edit_text(
         "👤 Введите <b>@username</b> или <b>числовой ID</b> пользователя:",
@@ -288,10 +311,12 @@ async def adm_find_user_start(call: CallbackQuery, state: FSMContext):
 
 @router.message(AdminStates.waiting_user_search)
 async def adm_user_search(message: Message, state: FSMContext, bot: Bot):
-    if not is_admin(message.from_user.id): return
+    if not is_admin(message.from_user.id):
+        await message.answer("⛔ Доступ запрещён")
+        return
 
     query = message.text.strip().lstrip("@")
-    user  = None
+    user = None
 
     import aiosqlite
     from database import DB_PATH
@@ -354,13 +379,13 @@ async def _show_user_card(message_or_call, bot: Bot, user: dict, edit: bool = Fa
             ref_count = (await cur.fetchone())[0]
 
     gender_icon = "👨" if user["gender"] == "male" else "👩"
-    uname    = f"@{user['username']}" if user["username"] else "нет username"
-    name     = profile.get("name", "—")
-    age      = profile.get("age", "—")
-    city     = profile.get("city", "—")
-    banned   = "🚫 Да" if user["is_banned"] else "✅ Нет"
-    premium  = f"⭐ до {user['premium_until']}" if user["is_premium"] else "❌ Нет"
-    joined   = user.get("created_at", "?")[:10]
+    uname = f"@{user['username']}" if user["username"] else "нет username"
+    name = profile.get("name", "—")
+    age = profile.get("age", "—")
+    city = profile.get("city", "—")
+    banned = "🚫 Да" if user["is_banned"] else "✅ Нет"
+    premium = f"⭐ до {user['premium_until']}" if user["is_premium"] else "❌ Нет"
+    joined = user.get("created_at", "?")[:10]
 
     text = (
         f"{gender_icon} <b>{name}</b>, {age} лет\n"
@@ -385,7 +410,9 @@ async def _show_user_card(message_or_call, bot: Bot, user: dict, edit: bool = Fa
 # ─── Бан / разбан ────────────────────────────────────────
 @router.callback_query(F.data.startswith("adm_ban_"))
 async def adm_ban(call: CallbackQuery, bot: Bot):
-    if not is_admin(call.from_user.id): return
+    if not is_admin(call.from_user.id):
+        await call.answer("⛔ Доступ запрещён", show_alert=True)
+        return
     await call.answer()
     tg_id = int(call.data.split("_")[-1])
     await db.ban_user(tg_id)
@@ -400,7 +427,9 @@ async def adm_ban(call: CallbackQuery, bot: Bot):
 
 @router.callback_query(F.data.startswith("adm_unban_"))
 async def adm_unban(call: CallbackQuery, bot: Bot):
-    if not is_admin(call.from_user.id): return
+    if not is_admin(call.from_user.id):
+        await call.answer("⛔ Доступ запрещён", show_alert=True)
+        return
     await call.answer()
     tg_id = int(call.data.split("_")[-1])
     await db.unban_user(tg_id)
@@ -416,7 +445,9 @@ async def adm_unban(call: CallbackQuery, bot: Bot):
 # ─── Премиум ──────────────────────────────────────────────
 @router.callback_query(F.data.startswith("adm_give_prem_"))
 async def adm_give_prem(call: CallbackQuery):
-    if not is_admin(call.from_user.id): return
+    if not is_admin(call.from_user.id):
+        await call.answer("⛔ Доступ запрещён", show_alert=True)
+        return
     await call.answer()
     tg_id = int(call.data.split("_")[-1])
     await call.message.edit_text(
@@ -428,19 +459,22 @@ async def adm_give_prem(call: CallbackQuery):
 
 @router.callback_query(F.data.startswith("adm_prem_days_"))
 async def adm_prem_days(call: CallbackQuery, bot: Bot):
-    if not is_admin(call.from_user.id): return
+    if not is_admin(call.from_user.id):
+        await call.answer("⛔ Доступ запрещён", show_alert=True)
+        return
     await call.answer()
     # adm_prem_days_{tg_id}_{days}
     parts = call.data.split("_")
     tg_id = int(parts[-2])
-    days  = int(parts[-1])
+    days = int(parts[-1])
 
     from datetime import date, timedelta
     user = await db.get_user(tg_id)
     if user and user.get("is_premium") and user.get("premium_until"):
         try:
             base = date.fromisoformat(user["premium_until"])
-            if base < date.today(): base = date.today()
+            if base < date.today():
+                base = date.today()
         except ValueError:
             base = date.today()
     else:
@@ -467,7 +501,9 @@ async def adm_prem_days(call: CallbackQuery, bot: Bot):
 
 @router.callback_query(F.data.startswith("adm_prem_custom_"))
 async def adm_prem_custom(call: CallbackQuery, state: FSMContext):
-    if not is_admin(call.from_user.id): return
+    if not is_admin(call.from_user.id):
+        await call.answer("⛔ Доступ запрещён", show_alert=True)
+        return
     await call.answer()
     tg_id = int(call.data.split("_")[-1])
     await state.update_data(premium_target_id=tg_id)
@@ -476,191 +512,4 @@ async def adm_prem_custom(call: CallbackQuery, state: FSMContext):
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="🔙 Отмена", callback_data=f"adm_user_back_{tg_id}")
-        ]])
-    )
-    await state.set_state(AdminStates.waiting_premium_days)
-
-
-@router.message(AdminStates.waiting_premium_days)
-async def adm_prem_days_input(message: Message, state: FSMContext, bot: Bot):
-    if not is_admin(message.from_user.id): return
-    try:
-        days = int(message.text.strip())
-        assert 1 <= days <= 3650
-    except (ValueError, AssertionError):
-        await message.answer("Введите число от 1 до 3650:")
-        return
-
-    data  = await state.get_data()
-    tg_id = data["premium_target_id"]
-
-    from datetime import date, timedelta
-    user = await db.get_user(tg_id)
-    base = date.today()
-    if user and user.get("is_premium") and user.get("premium_until"):
-        try:
-            b = date.fromisoformat(user["premium_until"])
-            if b >= date.today(): base = b
-        except ValueError:
-            pass
-
-    until = (base + timedelta(days=days)).isoformat()
-    await db.set_premium(tg_id, until)
-
-    try:
-        await bot.send_message(
-            tg_id,
-            f"🎉 Вам выдан <b>Premium на {days} дней</b>!\n"
-            f"Действует до: <b>{until}</b> ⭐",
-            parse_mode="HTML"
-        )
-    except Exception:
-        pass
-
-    await state.clear()
-    await message.answer(f"✅ Premium на {days} дн. выдан пользователю {tg_id} (до {until})")
-
-
-@router.callback_query(F.data.startswith("adm_revoke_prem_"))
-async def adm_revoke_prem(call: CallbackQuery, bot: Bot):
-    if not is_admin(call.from_user.id): return
-    await call.answer()
-    tg_id = int(call.data.split("_")[-1])
-    import aiosqlite
-    from database import DB_PATH
-    async with aiosqlite.connect(DB_PATH) as conn:
-        await conn.execute(
-            "UPDATE users SET is_premium=0, premium_until=NULL WHERE tg_id=?", (tg_id,)
-        )
-        await conn.commit()
-    try:
-        await bot.send_message(tg_id, "ℹ️ Ваша Премиум-подписка была отменена администратором.")
-    except Exception:
-        pass
-    await call.answer("✅ Премиум снят", show_alert=True)
-    user = await db.get_user(tg_id)
-    await _show_user_card(call, bot, user, edit=True)
-
-
-# ─── Удалить анкету ───────────────────────────────────────
-@router.callback_query(F.data.startswith("adm_del_profile_"))
-async def adm_del_profile(call: CallbackQuery, bot: Bot):
-    if not is_admin(call.from_user.id): return
-    tg_id = int(call.data.split("_")[-1])
-    import aiosqlite
-    from database import DB_PATH
-    async with aiosqlite.connect(DB_PATH) as conn:
-        await conn.execute("DELETE FROM photos WHERE tg_id=?", (tg_id,))
-        await conn.execute("DELETE FROM profiles WHERE tg_id=?", (tg_id,))
-        await conn.commit()
-    try:
-        await bot.send_message(tg_id, "ℹ️ Ваша анкета удалена администратором. Используйте /start для повторного заполнения.")
-    except Exception:
-        pass
-    await call.answer("✅ Анкета удалена", show_alert=True)
-    user = await db.get_user(tg_id)
-    await _show_user_card(call, bot, user, edit=True)
-
-
-# ─── Написать пользователю ────────────────────────────────
-@router.callback_query(F.data.startswith("adm_msg_"))
-async def adm_msg_start(call: CallbackQuery, state: FSMContext):
-    if not is_admin(call.from_user.id): return
-    await call.answer()
-    tg_id = int(call.data.split("_")[-1])
-    await state.update_data(msg_target_id=tg_id)
-    await call.message.edit_text(
-        f"💬 Введите сообщение для пользователя <code>{tg_id}</code>:\n\n"
-        "Поддерживается HTML-разметка (<b>жирный</b>, <i>курсив</i>)",
-        parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="🔙 Отмена", callback_data=f"adm_user_back_{tg_id}")
-        ]])
-    )
-    await state.set_state(AdminStates.waiting_message_text)
-
-
-@router.message(AdminStates.waiting_message_text)
-async def adm_msg_send(message: Message, state: FSMContext, bot: Bot):
-    if not is_admin(message.from_user.id): return
-    data  = await state.get_data()
-    tg_id = data["msg_target_id"]
-    try:
-        await bot.send_message(
-            tg_id,
-            f"📩 <b>Сообщение от администратора:</b>\n\n{message.text}",
-            parse_mode="HTML"
-        )
-        await message.answer(f"✅ Сообщение отправлено пользователю {tg_id}")
-    except Exception as e:
-        await message.answer(f"❌ Не удалось отправить: {e}")
-    await state.clear()
-
-
-# ─── Назад к карточке пользователя ───────────────────────
-@router.callback_query(F.data.startswith("adm_user_back_"))
-async def adm_user_back(call: CallbackQuery, bot: Bot):
-    if not is_admin(call.from_user.id): return
-    await call.answer()
-    tg_id = int(call.data.split("_")[-1])
-    user  = await db.get_user(tg_id)
-    if user:
-        await _show_user_card(call, bot, user, edit=True)
-    else:
-        await call.message.edit_text(
-            "🛠 <b>Админ-панель</b>",
-            parse_mode="HTML",
-            reply_markup=admin_main_keyboard()
-        )
-
-
-# ─── Рассылка ─────────────────────────────────────────────
-@router.callback_query(F.data == "adm_broadcast")
-async def adm_broadcast_start(call: CallbackQuery, state: FSMContext):
-    if not is_admin(call.from_user.id): return
-    await call.answer()
-    await call.message.edit_text(
-        "📢 Введите текст рассылки.\n\nПоддерживается HTML (<b>жирный</b>, <i>курсив</i>)\n\n"
-        "⚠️ Сообщение получат <b>все</b> активные пользователи.",
-        parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="🔙 Отмена", callback_data="adm_back")
-        ]])
-    )
-    await state.set_state(AdminStates.waiting_broadcast_msg)
-
-
-@router.message(AdminStates.waiting_broadcast_msg)
-async def adm_broadcast_send(message: Message, state: FSMContext, bot: Bot):
-    if not is_admin(message.from_user.id): return
-    await state.clear()
-
-    import aiosqlite
-    from database import DB_PATH
-    async with aiosqlite.connect(DB_PATH) as conn:
-        async with conn.execute(
-            "SELECT tg_id FROM users WHERE is_banned=0"
-        ) as cur:
-            rows = await cur.fetchall()
-
-    sent = failed = 0
-    status_msg = await message.answer(f"📤 Рассылка началась... (0/{len(rows)})")
-
-    for i, (uid,) in enumerate(rows):
-        try:
-            await bot.send_message(uid, message.text, parse_mode="HTML")
-            sent += 1
-        except Exception:
-            failed += 1
-        # Обновляем прогресс каждые 20 сообщений
-        if (i + 1) % 20 == 0:
-            try:
-                await status_msg.edit_text(f"📤 Рассылка... {i+1}/{len(rows)}")
-            except Exception:
-                pass
-
-    await status_msg.edit_text(
-        f"✅ Рассылка завершена!\n\n"
-        f"📨 Доставлено: {sent}\n"
-        f"❌ Ошибок: {failed}"
-    )
+            ]
