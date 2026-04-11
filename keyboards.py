@@ -1,6 +1,5 @@
 """
-keyboards.py — обновлённая версия
-💤 = выход в меню (кнопка "В главное меню" убрана)
+keyboards.py — главное меню с разделом Профиль
 """
 from aiogram.types import (
     InlineKeyboardMarkup, InlineKeyboardButton,
@@ -14,28 +13,29 @@ def main_menu(gender: str, has_profile: bool) -> ReplyKeyboardMarkup:
     if has_profile:
         buttons.append([KeyboardButton(text="👀 Смотреть анкеты")])
         buttons.append([
-            KeyboardButton(text="❤️ Мои симпатии"),
-            KeyboardButton(text="👤 Моя анкета"),
-        ])
-        buttons.append([
-            KeyboardButton(text="✏️ Изменить анкету"),
+            KeyboardButton(text="👤 Профиль"),
             KeyboardButton(text="⭐ Премиум"),
         ])
-        buttons.append([
-            KeyboardButton(text="🔗 Рефералы"),
-            KeyboardButton(text="🆘 Поддержка"),
-        ])
-        buttons.append([KeyboardButton(text="👁 Скрыть/показать анкету")])
     else:
         buttons.append([KeyboardButton(text="📝 Заполнить анкету")])
         buttons.append([KeyboardButton(text="🆘 Поддержка")])
     return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
 
 
+def profile_menu(is_hidden: bool) -> InlineKeyboardMarkup:
+    hide_text = "🟢 Показать анкету" if is_hidden else "🔴 Скрыть анкету"
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="👤 Моя анкета",        callback_data="prof_view")],
+        [InlineKeyboardButton(text="✏️ Изменить анкету",   callback_data="prof_edit")],
+        [InlineKeyboardButton(text="❤️ Мои симпатии",      callback_data="prof_likes")],
+        [InlineKeyboardButton(text="🔗 Рефералы",          callback_data="prof_ref")],
+        [InlineKeyboardButton(text="🆘 Поддержка",         callback_data="prof_support")],
+        [InlineKeyboardButton(text=hide_text,              callback_data="prof_toggle_hide")],
+        [InlineKeyboardButton(text="❌ Закрыть",           callback_data="prof_close")],
+    ])
+
+
 def browse_keyboard(is_premium: bool) -> ReplyKeyboardMarkup:
-    """
-    ♥️  лайк | 💌 лайк с сообщением (премиум) | 👎 дизлайк | 💤 выход в меню
-    """
     if is_premium:
         row = [
             KeyboardButton(text="♥️"),
@@ -60,14 +60,14 @@ def rules_keyboard() -> InlineKeyboardMarkup:
 
 def gender_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="👨 Я мужчина", callback_data="gender_male"),
-        InlineKeyboardButton(text="👩 Я женщина", callback_data="gender_female"),
+        InlineKeyboardButton(text="👨 Я мужчина",  callback_data="gender_male"),
+        InlineKeyboardButton(text="👩 Я женщина",  callback_data="gender_female"),
     ]])
 
 
 def confirm_profile_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Подтвердить", callback_data="profile_confirm")],
+        [InlineKeyboardButton(text="✅ Подтвердить",     callback_data="profile_confirm")],
         [InlineKeyboardButton(text="✏️ Изменить анкету", callback_data="profile_edit")],
     ])
 
@@ -119,16 +119,14 @@ def likes_menu_keyboard(gender: str, is_premium: bool) -> InlineKeyboardMarkup:
         builder.button(text="💌 Кто меня лайкнул", callback_data="likes_incoming")
     else:
         builder.button(text="🔒 Кто меня лайкнул (Премиум)", callback_data="likes_need_premium")
+    builder.button(text="🔙 Назад", callback_data="prof_back")
     builder.adjust(1)
     return builder.as_markup()
 
 
 def support_ticket_keyboard(ticket_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(
-            text="💬 Ответить",
-            callback_data=f"support_reply_{ticket_id}"
-        )
+        InlineKeyboardButton(text="💬 Ответить", callback_data=f"support_reply_{ticket_id}")
     ]])
 
 
