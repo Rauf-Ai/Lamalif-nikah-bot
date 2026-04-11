@@ -1,5 +1,5 @@
 """
-database.py — SQLite + aiosqlite (полная версия с рефералами и оплатой)
+database.py — полная версия с рефералами, оплатой, скрытием анкет, поддержкой
 """
 import aiosqlite
 from datetime import datetime, date
@@ -20,7 +20,6 @@ async def init_db():
             created_at   TEXT DEFAULT (datetime('now')),
             last_active  TEXT DEFAULT (datetime('now'))
         );
-
         CREATE TABLE IF NOT EXISTS profiles (
             tg_id        INTEGER PRIMARY KEY REFERENCES users(tg_id),
             name         TEXT,
@@ -28,15 +27,14 @@ async def init_db():
             city         TEXT,
             about        TEXT,
             is_approved  INTEGER DEFAULT 1,
+            is_hidden    INTEGER DEFAULT 0,
             updated_at   TEXT DEFAULT (datetime('now'))
         );
-
         CREATE TABLE IF NOT EXISTS photos (
             id      INTEGER PRIMARY KEY AUTOINCREMENT,
             tg_id   INTEGER REFERENCES users(tg_id),
             file_id TEXT NOT NULL
         );
-
         CREATE TABLE IF NOT EXISTS likes (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             from_id      INTEGER REFERENCES users(tg_id),
@@ -45,37 +43,33 @@ async def init_db():
             message_text TEXT,
             message_file_id TEXT,
             message_type TEXT,
+            notified     INTEGER DEFAULT 0,
             created_at   TEXT DEFAULT (datetime('now')),
             UNIQUE(from_id, to_id)
         );
-
         CREATE TABLE IF NOT EXISTS daily_likes (
             tg_id  INTEGER,
             day    TEXT,
             count  INTEGER DEFAULT 0,
             PRIMARY KEY (tg_id, day)
         );
-
         CREATE TABLE IF NOT EXISTS weekly_likes (
             tg_id  INTEGER,
             week   TEXT,
             count  INTEGER DEFAULT 0,
             PRIMARY KEY (tg_id, week)
         );
-
         CREATE TABLE IF NOT EXISTS viewed (
             viewer_id  INTEGER,
             target_id  INTEGER,
             viewed_at  TEXT DEFAULT (datetime('now')),
             PRIMARY KEY (viewer_id, target_id)
         );
-
         CREATE TABLE IF NOT EXISTS referrals (
             user_id      INTEGER PRIMARY KEY,
             referred_by  INTEGER,
             created_at   TEXT DEFAULT (datetime('now'))
         );
-
         CREATE TABLE IF NOT EXISTS ref_earnings (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             earner_id       INTEGER,
@@ -85,7 +79,25 @@ async def init_db():
             level           INTEGER,
             created_at      TEXT DEFAULT (datetime('now'))
         );
+        CREATE TABLE IF NOT EXISTS support_tickets (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     INTEGER,
+            message     TEXT,
+            reply       TEXT,
+            status      TEXT DEFAULT 'open',
+            created_at  TEXT DEFAULT (datetime('now')),
+            replied_at  TEXT
+        );
         """)
+        # Миграции для существующих БД
+        for col_sql in [
+            "ALTER TABLE profiles ADD COLUMN is_hidden INTEGER DEFAULT 0",
+            "ALTER TABLE likes ADD COLUMN notified INTEGER DEFAULT 0",
+        ]:
+            try:
+                await db.execute(col_sql)
+            except Exception:
+                pass
         await db.commit()
 
 
@@ -102,11 +114,8 @@ async def get_user(tg_id: int) -> dict | None:
 async def upsert_user(tg_id: int, username: str | None, gender: str | None = None):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
-            INSERT INTO users (tg_id, username, gender)
-            VALUES (?, ?, ?)
-            ON CONFLICT(tg_id) DO UPDATE SET
-                username=excluded.username,
-                last_active=datetime('now')
+            INSERT INTO users (tg_id, username, gender) VALUES (?, ?, ?)
+            ON CONFLICT(tg_id) DO UPDATE SET username=excluded.username, last_active=datetime('now')
         """, (tg_id, username, gender))
         await db.commit()
 
@@ -119,14 +128,14 @@ async def set_gender(tg_id: int, gender: str):
 
 async def set_premium(tg_id: int, until_date: str):
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("""
-            UPDATE users SET is_premium=1, premium_until=? WHERE tg_id=?
-        """, (until_date, tg_id))
+        await db.execute(
+            "UPDATE users SET is_premium=1, premium_until=? WHERE tg_id=?",
+            (until_date, tg_id)
+        )
         await db.commit()
 
 
 async def revoke_expired_premiums():
-    """Снять премиум у тех, у кого истёк срок."""
     today = date.today().isoformat()
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
@@ -155,8 +164,7 @@ async def get_profile(tg_id: int) -> dict | None:
         db.row_factory = aiosqlite.Row
         async with db.execute("""
             SELECT p.*, u.gender, u.username, u.is_premium
-            FROM profiles p JOIN users u ON p.tg_id=u.tg_id
-            WHERE p.tg_id=?
+            FROM profiles p JOIN users u ON p.tg_id=u.tg_id WHERE p.tg_id=?
         """, (tg_id,)) as cur:
             row = await cur.fetchone()
             return dict(row) if row else None
@@ -165,13 +173,20 @@ async def get_profile(tg_id: int) -> dict | None:
 async def save_profile(tg_id: int, name: str, age: int, city: str, about: str):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
-            INSERT INTO profiles (tg_id, name, age, city, about)
-            VALUES (?,?,?,?,?)
+            INSERT INTO profiles (tg_id, name, age, city, about) VALUES (?,?,?,?,?)
             ON CONFLICT(tg_id) DO UPDATE SET
                 name=excluded.name, age=excluded.age,
-                city=excluded.city, about=excluded.about,
-                updated_at=datetime('now')
+                city=excluded.city, about=excluded.about, updated_at=datetime('now')
         """, (tg_id, name, age, city, about))
+        await db.commit()
+
+
+async def set_profile_hidden(tg_id: int, hidden: bool):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE profiles SET is_hidden=? WHERE tg_id=?",
+            (1 if hidden else 0, tg_id)
+        )
         await db.commit()
 
 
@@ -190,8 +205,7 @@ async def get_photos(tg_id: int) -> list[str]:
         async with db.execute(
             "SELECT file_id FROM photos WHERE tg_id=? LIMIT 3", (tg_id,)
         ) as cur:
-            rows = await cur.fetchall()
-            return [r[0] for r in rows]
+            return [r[0] for r in await cur.fetchall()]
 
 
 async def delete_profile(tg_id: int):
@@ -199,6 +213,14 @@ async def delete_profile(tg_id: int):
         await db.execute("DELETE FROM photos WHERE tg_id=?", (tg_id,))
         await db.execute("DELETE FROM profiles WHERE tg_id=?", (tg_id,))
         await db.execute("DELETE FROM users WHERE tg_id=?", (tg_id,))
+        await db.commit()
+
+
+async def delete_fake_profiles():
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM photos WHERE tg_id BETWEEN 1001001 AND 2001030")
+        await db.execute("DELETE FROM profiles WHERE tg_id BETWEEN 1001001 AND 2001030")
+        await db.execute("DELETE FROM users WHERE tg_id BETWEEN 1001001 AND 2001030")
         await db.commit()
 
 
@@ -211,25 +233,17 @@ async def get_next_profile(viewer_id: int, viewer_gender: str) -> dict | None:
         async with db.execute(
             "SELECT city, age FROM profiles WHERE tg_id=?", (viewer_id,)
         ) as cur:
-            viewer_row = await cur.fetchone()
-
-        viewer_city = viewer_row["city"] if viewer_row else ""
-        viewer_age  = viewer_row["age"]  if viewer_row else 25
+            vr = await cur.fetchone()
+        viewer_city = vr["city"] if vr else ""
+        viewer_age  = vr["age"]  if vr else 25
 
         async with db.execute("""
             SELECT p.*, u.gender, u.username, u.is_premium
-            FROM profiles p
-            JOIN users u ON p.tg_id = u.tg_id
-            WHERE u.gender = ?
-              AND u.is_banned = 0
+            FROM profiles p JOIN users u ON p.tg_id=u.tg_id
+            WHERE u.gender=? AND u.is_banned=0 AND p.is_hidden=0
               AND p.tg_id != ?
-              AND p.tg_id NOT IN (
-                  SELECT target_id FROM viewed WHERE viewer_id=?
-              )
-            ORDER BY
-                u.is_premium DESC,
-                (p.city = ?) DESC,
-                ABS(p.age - ?) ASC
+              AND p.tg_id NOT IN (SELECT target_id FROM viewed WHERE viewer_id=?)
+            ORDER BY u.is_premium DESC, (p.city=?) DESC, ABS(p.age-?) ASC
             LIMIT 1
         """, (target_gender, viewer_id, viewer_id, viewer_city, viewer_age)) as cur:
             row = await cur.fetchone()
@@ -238,9 +252,10 @@ async def get_next_profile(viewer_id: int, viewer_gender: str) -> dict | None:
 
 async def mark_viewed(viewer_id: int, target_id: int):
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("""
-            INSERT OR REPLACE INTO viewed (viewer_id, target_id) VALUES (?,?)
-        """, (viewer_id, target_id))
+        await db.execute(
+            "INSERT OR REPLACE INTO viewed (viewer_id, target_id) VALUES (?,?)",
+            (viewer_id, target_id)
+        )
         await db.commit()
 
 
@@ -252,10 +267,10 @@ async def reset_viewed(viewer_id: int):
 
 async def get_last_viewed(viewer_id: int) -> int | None:
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("""
-            SELECT target_id FROM viewed WHERE viewer_id=?
-            ORDER BY viewed_at DESC LIMIT 1
-        """, (viewer_id,)) as cur:
+        async with db.execute(
+            "SELECT target_id FROM viewed WHERE viewer_id=? ORDER BY viewed_at DESC LIMIT 1",
+            (viewer_id,)
+        ) as cur:
             row = await cur.fetchone()
             return row[0] if row else None
 
@@ -275,15 +290,24 @@ async def add_like(from_id, to_id, value,
                    msg_text=None, msg_file=None, msg_type=None):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
-            INSERT INTO likes (from_id, to_id, value, message_text, message_file_id, message_type)
-            VALUES (?,?,?,?,?,?)
+            INSERT INTO likes
+                (from_id, to_id, value, message_text, message_file_id, message_type, notified)
+            VALUES (?,?,?,?,?,?,0)
             ON CONFLICT(from_id, to_id) DO UPDATE SET
-                value=excluded.value,
-                message_text=excluded.message_text,
+                value=excluded.value, message_text=excluded.message_text,
                 message_file_id=excluded.message_file_id,
                 message_type=excluded.message_type,
-                created_at=datetime('now')
+                notified=0, created_at=datetime('now')
         """, (from_id, to_id, value, msg_text, msg_file, msg_type))
+        await db.commit()
+
+
+async def mark_like_notified(from_id: int, to_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE likes SET notified=1 WHERE from_id=? AND to_id=?",
+            (from_id, to_id)
+        )
         await db.commit()
 
 
@@ -291,11 +315,19 @@ async def is_mutual_like(user_a: int, user_b: int) -> bool:
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("""
             SELECT COUNT(*) FROM likes
-            WHERE ((from_id=? AND to_id=? AND value=1)
-                OR (from_id=? AND to_id=? AND value=1))
+            WHERE ((from_id=? AND to_id=? AND value=1) OR (from_id=? AND to_id=? AND value=1))
         """, (user_a, user_b, user_b, user_a)) as cur:
+            return (await cur.fetchone())[0] == 2
+
+
+async def get_like(from_id: int, to_id: int) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM likes WHERE from_id=? AND to_id=?", (from_id, to_id)
+        ) as cur:
             row = await cur.fetchone()
-            return row[0] == 2
+            return dict(row) if row else None
 
 
 async def get_mutual_likes(tg_id: int) -> list[dict]:
@@ -372,9 +404,10 @@ async def increment_week_likes(tg_id: int):
 
 async def set_referral(user_id: int, referred_by: int):
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("""
-            INSERT OR IGNORE INTO referrals (user_id, referred_by) VALUES (?,?)
-        """, (user_id, referred_by))
+        await db.execute(
+            "INSERT OR IGNORE INTO referrals (user_id, referred_by) VALUES (?,?)",
+            (user_id, referred_by)
+        )
         await db.commit()
 
 
@@ -389,27 +422,20 @@ async def get_referral_info(user_id: int) -> dict | None:
 
 
 async def get_referral_stats(user_id: int) -> dict:
-    """Кол-во рефералов 1 и 2 уровня."""
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
             "SELECT COUNT(*) FROM referrals WHERE referred_by=?", (user_id,)
         ) as cur:
             lvl1 = (await cur.fetchone())[0]
-
-        # 2-й уровень: те кого привели мои рефералы
         async with db.execute("""
             SELECT COUNT(*) FROM referrals
-            WHERE referred_by IN (
-                SELECT user_id FROM referrals WHERE referred_by=?
-            )
+            WHERE referred_by IN (SELECT user_id FROM referrals WHERE referred_by=?)
         """, (user_id,)) as cur:
             lvl2 = (await cur.fetchone())[0]
-
     return {"lvl1_count": lvl1, "lvl2_count": lvl2}
 
 
-async def add_ref_earning(earner_id: int, from_user_id: int,
-                          original_amount: int, amount: int, level: int):
+async def add_ref_earning(earner_id, from_user_id, original_amount, amount, level):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
             INSERT INTO ref_earnings (earner_id, from_user_id, original_amount, amount, level)
@@ -421,8 +447,51 @@ async def add_ref_earning(earner_id: int, from_user_id: int,
 async def get_ref_earnings(earner_id: int) -> list[dict]:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute("""
-            SELECT * FROM ref_earnings WHERE earner_id=? ORDER BY created_at ASC
-        """, (earner_id,)) as cur:
+        async with db.execute(
+            "SELECT * FROM ref_earnings WHERE earner_id=? ORDER BY created_at ASC",
+            (earner_id,)
+        ) as cur:
             return [dict(r) for r in await cur.fetchall()]
-            
+
+
+# ─── ПОДДЕРЖКА ────────────────────────────────────────────
+
+async def create_ticket(user_id: int, message: str) -> int:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            "INSERT INTO support_tickets (user_id, message) VALUES (?,?)",
+            (user_id, message)
+        )
+        await db.commit()
+        return cur.lastrowid
+
+
+async def get_ticket(ticket_id: int) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM support_tickets WHERE id=?", (ticket_id,)
+        ) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
+
+async def reply_ticket(ticket_id: int, reply: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            UPDATE support_tickets
+            SET reply=?, status='closed', replied_at=datetime('now')
+            WHERE id=?
+        """, (reply, ticket_id))
+        await db.commit()
+
+
+async def get_user_tickets(user_id: int) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("""
+            SELECT * FROM support_tickets WHERE user_id=?
+            ORDER BY created_at DESC LIMIT 10
+        """, (user_id,)) as cur:
+            return [dict(r) for r in await cur.fetchall()]
+                         
