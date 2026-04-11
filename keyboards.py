@@ -1,5 +1,6 @@
 """
-keyboards.py (обновлённая) — добавлена кнопка рефералов в главном меню
+keyboards.py — обновлённая версия
+💤 = выход в меню (кнопка "В главное меню" убрана)
 """
 from aiogram.types import (
     InlineKeyboardMarkup, InlineKeyboardButton,
@@ -22,15 +23,19 @@ def main_menu(gender: str, has_profile: bool) -> ReplyKeyboardMarkup:
         ])
         buttons.append([
             KeyboardButton(text="🔗 Рефералы"),
-            KeyboardButton(text="ℹ️ Помощь"),
+            KeyboardButton(text="🆘 Поддержка"),
         ])
+        buttons.append([KeyboardButton(text="👁 Скрыть/показать анкету")])
     else:
         buttons.append([KeyboardButton(text="📝 Заполнить анкету")])
-        buttons.append([KeyboardButton(text="ℹ️ Помощь")])
+        buttons.append([KeyboardButton(text="🆘 Поддержка")])
     return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
 
 
 def browse_keyboard(is_premium: bool) -> ReplyKeyboardMarkup:
+    """
+    ♥️  лайк | 💌 лайк с сообщением (премиум) | 👎 дизлайк | 💤 выход в меню
+    """
     if is_premium:
         row = [
             KeyboardButton(text="♥️"),
@@ -44,10 +49,7 @@ def browse_keyboard(is_premium: bool) -> ReplyKeyboardMarkup:
             KeyboardButton(text="👎"),
             KeyboardButton(text="💤"),
         ]
-    return ReplyKeyboardMarkup(
-        keyboard=[row, [KeyboardButton(text="🔙 В главное меню")]],
-        resize_keyboard=True
-    )
+    return ReplyKeyboardMarkup(keyboard=[row], resize_keyboard=True)
 
 
 def rules_keyboard() -> InlineKeyboardMarkup:
@@ -80,10 +82,11 @@ def like_message_type_keyboard() -> InlineKeyboardMarkup:
 
 
 def mutual_like_keyboard(target_username: str) -> InlineKeyboardMarkup:
+    text = "Ассаляму алейкум. Я с ЛямАлиф Никах бота ✨"
     return InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(
             text=f"💬 Написать @{target_username}",
-            url=f"https://t.me/{target_username}"
+            url=f"https://t.me/{target_username}?text={text}"
         )
     ]])
 
@@ -100,13 +103,11 @@ def edit_field_keyboard() -> InlineKeyboardMarkup:
 
 
 def premium_plans_keyboard() -> InlineKeyboardMarkup:
-    from handlers.payment import PLANS
-    rows = []
-    for i, (label, days, stars) in enumerate(PLANS):
-        rows.append([InlineKeyboardButton(
-            text=f"{label}  •  ⭐ {stars}",
-            callback_data=f"buy_plan_{i}"
-        )])
+    PLANS = [("2 дня", 2, 250), ("30 дней", 30, 750),
+             ("90 дней", 90, 1500), ("180 дней", 180, 2500)]
+    rows = [[InlineKeyboardButton(
+        text=f"{label}  •  ⭐ {stars}", callback_data=f"buy_plan_{i}"
+    )] for i, (label, _, stars) in enumerate(PLANS)]
     rows.append([InlineKeyboardButton(text="❌ Закрыть", callback_data="premium_close")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -122,6 +123,15 @@ def likes_menu_keyboard(gender: str, is_premium: bool) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+def support_ticket_keyboard(ticket_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(
+            text="💬 Ответить",
+            callback_data=f"support_reply_{ticket_id}"
+        )
+    ]])
+
+
 def remove_kb() -> ReplyKeyboardRemove:
     return ReplyKeyboardRemove()
 
@@ -131,4 +141,4 @@ def cancel_keyboard() -> ReplyKeyboardMarkup:
         keyboard=[[KeyboardButton(text="❌ Отмена")]],
         resize_keyboard=True
     )
-        
+    
